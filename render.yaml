@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: epic-fury-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production
