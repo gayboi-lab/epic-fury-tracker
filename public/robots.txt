@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://epic-fury-tracker.onrender.com/sitemap.xml
