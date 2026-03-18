@@ -139,4 +139,20 @@ app.get("*", (req, res) => {
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Epic Fury Tracker running on port ${PORT}`);
+
+  // Self-ping every 14 minutes to prevent Render free tier from sleeping
+  const RENDER_URL = "https://epic-fury-tracker.onrender.com";
+  const PING_INTERVAL = 14 * 60 * 1000; // 14 minutes
+
+  setInterval(async () => {
+    try {
+      const res = await fetch(`${RENDER_URL}/api/health`);
+      const data = await res.json();
+      console.log(`[keep-alive] pinged at ${new Date().toISOString()} - ${data.status}`);
+    } catch (err) {
+      console.error(`[keep-alive] ping failed: ${err.message}`);
+    }
+  }, PING_INTERVAL);
+
+  console.log(`[keep-alive] self-ping enabled every 14 minutes`);
 });
