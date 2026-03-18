@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 const Stripe = require("stripe");
 
 const app = express();
@@ -41,11 +42,10 @@ app.use((req, res, next) => {
   }
 });
 
-// Health check
-app.get("/", (req, res) => {
-  res.json({ status: "ok", service: "Epic Fury Tracker API" });
-});
+// Serve static frontend
+app.use(express.static(path.join(__dirname, "public")));
 
+// Health check
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
@@ -130,6 +130,13 @@ app.post("/api/stripe-webhook", async (req, res) => {
   }
 });
 
+// Catch-all: serve index.html for any non-API route (SPA support)
+app.get("*", (req, res) => {
+  if (!req.path.startsWith("/api")) {
+    res.sendFile(path.join(__dirname, "public", "index.html"));
+  }
+});
+
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Epic Fury API server running on port ${PORT}`);
+  console.log(`Epic Fury Tracker running on port ${PORT}`);
 });
