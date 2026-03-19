@@ -73,8 +73,8 @@ app.post("/api/create-checkout-session", async (req, res) => {
         },
       ],
       mode: "payment",
-      success_url: successUrl || "https://www.perplexity.ai/computer/a/operation-epic-fury-tracker-k12BbSXgTRm.bJgWqGNPEA/#/premium-success?session_id={CHECKOUT_SESSION_ID}",
-      cancel_url: cancelUrl || "https://www.perplexity.ai/computer/a/operation-epic-fury-tracker-k12BbSXgTRm.bJgWqGNPEA/#/",
+      success_url: successUrl || `${req.headers.origin || 'https://epic-fury-tracker.onrender.com'}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: cancelUrl || `${req.headers.origin || 'https://epic-fury-tracker.onrender.com'}`,
     });
 
     res.json({ sessionId: session.id, url: session.url });
