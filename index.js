@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const fs = require("fs");
 const Stripe = require("stripe");
 
 const app = express();
@@ -18,7 +19,41 @@ if (process.env.STRIPE_SECRET_KEY) {
 const PRICE_AMOUNT = 159; // $1.59 in cents
 const PRODUCT_NAME = "Operation Epic Fury Tracker — Premium";
 
-// Track completed payments in memory
+// Persistent premium storage
+const PREMIUM_FILE = path.join(__dirname, "premium-users.json");
+
+function loadPremiumUsers() {
+  try {
+    if (fs.existsSync(PREMIUM_FILE)) {
+      return JSON.parse(fs.readFileSync(PREMIUM_FILE, "utf-8"));
+    }
+  } catch (e) {
+    console.error("Error loading premium users:", e.message);
+  }
+  return { sessions: [], emails: [] };
+}
+
+function savePremiumUser(sessionId, email) {
+  const data = loadPremiumUsers();
+  if (sessionId && !data.sessions.includes(sessionId)) {
+    data.sessions.push(sessionId);
+  }
+  if (email && !data.emails.includes(email.toLowerCase())) {
+    data.emails.push(email.toLowerCase());
+  }
+  try {
+    fs.writeFileSync(PREMIUM_FILE, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error("Error saving premium users:", e.message);
+  }
+}
+
+function isPremiumSession(sessionId) {
+  const data = loadPremiumUsers();
+  return data.sessions.includes(sessionId);
+}
+
+// Track completed payments in memory (backup)
 const completedPayments = new Set();
 
 // CORS - allow requests from the frontend
@@ -88,19 +123,61 @@ app.post("/api/create-checkout-session", async (req, res) => {
 app.get("/api/verify-payment/:sessionId", async (req, res) => {
   if (!stripe) return res.status(503).json({ error: "Payment service not configured" });
   try {
+    // First check local cache
+    if (isPremiumSession(req.params.sessionId)) {
+      return res.json({ paid: true, cached: true });
+    }
+
     const session = await stripe.checkout.sessions.retrieve(
       req.params.sessionId
     );
 
     if (session.payment_status === "paid") {
       completedPayments.add(session.id);
-      res.json({ paid: true, customerEmail: session.customer_details?.email });
+      const email = session.customer_details?.email || "";
+      savePremiumUser(session.id, email);
+      console.log(`Premium activated: session=${session.id}, email=${email}`);
+      res.json({ paid: true, customerEmail: email });
     } else {
       res.json({ paid: false });
     }
   } catch (error) {
     console.error("Payment verification error:", error.message);
+    // If Stripe is down, check local cache
+    if (isPremiumSession(req.params.sessionId)) {
+      return res.json({ paid: true, cached: true });
+    }
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Check if a session ID has premium access (for persistent status)
+app.get("/api/check-premium/:sessionId", (req, res) => {
+  const sessionId = req.params.sessionId;
+  
+  // Check local persistent storage first
+  if (isPremiumSession(sessionId) || completedPayments.has(sessionId)) {
+    return res.json({ premium: true });
+  }
+
+  // If not in local cache, verify with Stripe
+  if (stripe) {
+    stripe.checkout.sessions.retrieve(sessionId)
+      .then(session => {
+        if (session.payment_status === "paid") {
+          const email = session.customer_details?.email || "";
+          savePremiumUser(session.id, email);
+          completedPayments.add(session.id);
+          res.json({ premium: true });
+        } else {
+          res.json({ premium: false });
+        }
+      })
+      .catch(() => {
+        res.json({ premium: false });
+      });
+  } else {
+    res.json({ premium: false });
   }
 });
 
@@ -120,7 +197,9 @@ app.post("/api/stripe-webhook", async (req, res) => {
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
       completedPayments.add(session.id);
-      console.log(`Payment completed: ${session.id}`);
+      const email = session.customer_details?.email || "";
+      savePremiumUser(session.id, email);
+      console.log(`Payment completed (webhook): ${session.id}, email=${email}`);
     }
 
     res.json({ received: true });
