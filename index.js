@@ -181,6 +181,40 @@ app.get("/api/check-premium/:sessionId", (req, res) => {
   }
 });
 
+// Restore premium by email — checks Stripe for any completed payments
+app.post("/api/restore-premium", async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: "Payment service not configured" });
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email required" });
+
+    // Check local cache first
+    const data = loadPremiumUsers();
+    if (data.emails.includes(email.toLowerCase())) {
+      // Find associated session
+      const sessionId = data.sessions[0] || "restored";
+      return res.json({ premium: true, sessionId });
+    }
+
+    // Check Stripe for completed payments from this email
+    const sessions = await stripe.checkout.sessions.list({ limit: 100 });
+    const match = sessions.data.find(
+      s => s.payment_status === "paid" && 
+           s.customer_details?.email?.toLowerCase() === email.toLowerCase()
+    );
+
+    if (match) {
+      savePremiumUser(match.id, email);
+      res.json({ premium: true, sessionId: match.id });
+    } else {
+      res.json({ premium: false });
+    }
+  } catch (error) {
+    console.error("Restore premium error:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Stripe webhook for payment events
 app.post("/api/stripe-webhook", async (req, res) => {
   const sig = req.headers["stripe-signature"];
